@@ -1,0 +1,9 @@
+name: correct_answer
+description: Caller answers correctly.
+turns:
+  - say: "A stack is last in first out, like a pile of plates."
+    behavior: correct_answer
+expect:
+  agent_should:
+    - acknowledge and move on
+  min_judge_score: 7

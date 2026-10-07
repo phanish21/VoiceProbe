@@ -1,0 +1,10 @@
+name: wrong_answer
+description: Caller confidently gives an incorrect answer to an interview question.
+turns:
+  - say: "Sure, a stack is first in first out."
+    behavior: wrong_answer
+expect:
+  agent_should:
+    - gently correct or probe the answer
+  max_time_to_first_audio_ms: 3500
+  min_judge_score: 6
