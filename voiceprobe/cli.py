@@ -15,6 +15,11 @@ def main():
     run.add_argument("scenario", help="path to a scenario YAML file")
     run.add_argument("--mock", action="store_true", help="use the offline mock LLM")
     run.add_argument(
+        "--no-cache",
+        action="store_true",
+        help="skip the response cache so latency numbers are real",
+    )
+    run.add_argument(
         "--prompt",
         default="examples/sample_agent/prompt.txt",
         help="path to the agent's system prompt",
@@ -24,7 +29,7 @@ def main():
 
     scenario = load_scenario(args.scenario)
     prompt = Path(args.prompt).read_text(encoding="utf-8")
-    agent = TextAdapter(get_llm(args.mock), prompt)
+    agent = TextAdapter(get_llm(args.mock, use_cache=not args.no_cache), prompt)
     result = run_scenario(scenario, agent)
 
     for turn in result["turns"]:

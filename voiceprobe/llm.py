@@ -28,12 +28,13 @@ class GroqLLM:
     name = "groq"
     URL = "https://api.groq.com/openai/v1/chat/completions"
 
-    def __init__(self, model="openai/gpt-oss-120b", cache_dir=".cache", retries=3):
+    def __init__(self, model="openai/gpt-oss-120b", cache_dir=".cache", retries=3, use_cache=True):
         import httpx  # imported here so mock mode never needs it
 
         self.httpx = httpx
         self.model = model
         self.retries = retries
+        self.use_cache = use_cache
         self.key = os.environ["GROQ_API_KEY"]
         self.cache = Path(cache_dir)
         self.cache.mkdir(exist_ok=True)
@@ -46,7 +47,7 @@ class GroqLLM:
         }
         key = hashlib.sha256(json.dumps(payload, sort_keys=True).encode()).hexdigest()
         cache_file = self.cache / f"{key}.json"
-        if cache_file.exists():
+        if self.use_cache and cache_file.exists():
             return json.loads(cache_file.read_text(encoding="utf-8"))["text"]
 
         for attempt in range(self.retries):
@@ -61,10 +62,11 @@ class GroqLLM:
                 continue
             r.raise_for_status()
             text = r.json()["choices"][0]["message"]["content"]
-            cache_file.write_text(json.dumps({"text": text}), encoding="utf-8")
+            if self.use_cache:
+                cache_file.write_text(json.dumps({"text": text}), encoding="utf-8")
             return text
         raise RuntimeError("Rate limited after retries")
 
 
-def get_llm(mock: bool):
-    return MockLLM() if mock else GroqLLM()
+def get_llm(mock: bool, use_cache: bool = True):
+    return MockLLM() if mock else GroqLLM(use_cache=use_cache)
