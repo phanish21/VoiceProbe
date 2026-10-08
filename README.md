@@ -1,4 +1,5 @@
 # VoiceProbe Lite
+![tests](https://github.com/phanish21/VoiceProbe/actions/workflows/tests.yml/badge.svg)
 
 **Unit tests for voice agents: catch latency and quality regressions before your users do.**
 
