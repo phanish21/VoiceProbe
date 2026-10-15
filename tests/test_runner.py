@@ -6,6 +6,7 @@ from voiceprobe.runner import run_scenario
 from voiceprobe.scenario import load_scenario
 
 from voiceprobe.adapters.base import AgentAdapter, AgentReply
+from voiceprobe.runner import run_repeated, run_scenario
 
 ROOT = Path(__file__).parent.parent
 
@@ -58,3 +59,14 @@ def test_rich_metrics_are_recorded(tmp_path):
     assert result["metrics"]["ttfat_ms_max"] == 120.0
     assert result["metrics"]["total_tokens"] == 40
     assert result["model"] == "fake"
+
+
+def test_run_repeated_summarizes_across_runs(tmp_path):
+    scenario = load_scenario(str(ROOT / "scenarios" / "wrong_answer.yaml"))
+    result = run_repeated(scenario, FakeAdapter, n=3, out_dir=str(tmp_path))
+    assert result["n_runs"] == 3
+    assert len(result["runs"]) == 3
+    # each run has 2 agent turns (100 ms and 200 ms), so 6 values in total
+    assert result["summary"]["llm_ms"]["n"] == 6
+    assert result["summary"]["llm_ms"]["median"] == 150.0
+    assert (tmp_path / "wrong_answer.json").exists()

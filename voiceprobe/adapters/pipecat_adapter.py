@@ -3,6 +3,7 @@ import os
 import sys
 
 from dotenv import load_dotenv
+from loguru import logger
 from pipecat.frames.frames import (
     EndFrame,
     LLMFullResponseEndFrame,
@@ -50,6 +51,8 @@ class _Collector(FrameProcessor):
 class PipecatAdapter(AgentAdapter):
     def __init__(self, system_prompt: str, model: str = "openai/gpt-oss-120b"):
         load_dotenv()
+        logger.remove()                        # drop Pipecat's default handler
+        logger.add(sys.stderr, level="WARNING")  # keep only warnings and errors
         self.system = system_prompt
         self.model = model
         self.history: list[dict] = []
@@ -70,11 +73,12 @@ class PipecatAdapter(AgentAdapter):
     async def _run_pipeline(self):
         llm = GroqLLMService(
             api_key=os.environ["GROQ_API_KEY"],
-            settings=GroqLLMService.Settings(model=self.model),
+            settings=GroqLLMService.Settings(
+                model=self.model,
+                system_instruction=self.system,
+            ),
         )
-        context = LLMContext(
-            messages=[{"role": "system", "content": self.system}, *self.history]
-        )
+        context = LLMContext(messages=list(self.history))
         pair = LLMContextAggregatorPair(context)
         collector = _Collector()
         task = PipelineTask(

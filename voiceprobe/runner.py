@@ -3,6 +3,7 @@ import time
 from dataclasses import asdict
 from pathlib import Path
 
+from .metrics import aggregate_runs, summarize_run
 from .scenario import Scenario
 
 
@@ -13,25 +14,12 @@ def _agent_turn(reply) -> dict:
     return {"role": "agent", **fields}
 
 
-def _summarize(agent_turns: list[dict]) -> dict:
-    latencies = [t["llm_ms"] for t in agent_turns]
-    metrics = {
-        "llm_ms_avg": round(sum(latencies) / len(latencies), 1),
-        "llm_ms_max": max(latencies),
-    }
-    ttfat = [t["llm_ttfat_ms"] for t in agent_turns if "llm_ttfat_ms" in t]
-    if ttfat:
-        metrics["ttfat_ms_avg"] = round(sum(ttfat) / len(ttfat), 1)
-        metrics["ttfat_ms_max"] = max(ttfat)
-    tokens = sum(
-        t.get("prompt_tokens", 0) + t.get("completion_tokens", 0) for t in agent_turns
-    )
-    if tokens:
-        metrics["total_tokens"] = tokens
-    return metrics
+def _save(result: dict, out_dir: str, name: str) -> None:
+    Path(out_dir).mkdir(exist_ok=True)
+    Path(out_dir, f"{name}.json").write_text(json.dumps(result, indent=2), encoding="utf-8")
 
 
-def run_scenario(scenario: Scenario, agent, out_dir: str = "runs") -> dict:
+def run_scenario(scenario: Scenario, agent, out_dir: str | None = "runs") -> dict:
     turns = [_agent_turn(agent.start())]
 
     for turn in scenario.turns:
@@ -44,11 +32,24 @@ def run_scenario(scenario: Scenario, agent, out_dir: str = "runs") -> dict:
         "timestamp": time.time(),
         "model": next((t["model"] for t in agent_turns if "model" in t), None),
         "turns": turns,
-        "metrics": _summarize(agent_turns),
+        "metrics": summarize_run(agent_turns),
     }
+    if out_dir is not None:
+        _save(result, out_dir, scenario.name)
+    return result
 
-    Path(out_dir).mkdir(exist_ok=True)
-    Path(out_dir, f"{scenario.name}.json").write_text(
-        json.dumps(result, indent=2), encoding="utf-8"
-    )
+
+def run_repeated(scenario: Scenario, make_agent, n: int, out_dir: str | None = "runs") -> dict:
+    """Run the scenario n times, each with a brand-new agent."""
+    runs = [run_scenario(scenario, make_agent(), out_dir=None) for _ in range(n)]
+    result = {
+        "scenario": scenario.name,
+        "timestamp": time.time(),
+        "model": runs[0]["model"],
+        "n_runs": n,
+        "runs": runs,
+        "summary": aggregate_runs(runs),
+    }
+    if out_dir is not None:
+        _save(result, out_dir, scenario.name)
     return result
