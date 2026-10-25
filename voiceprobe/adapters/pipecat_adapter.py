@@ -18,8 +18,8 @@ from pipecat.metrics.metrics import (
     TTFBMetricsData,
 )
 from pipecat.pipeline.pipeline import Pipeline
-from pipecat.pipeline.runner import PipelineRunner
-from pipecat.pipeline.task import PipelineParams, PipelineTask
+from pipecat.pipeline.worker import PipelineParams, PipelineWorker
+from pipecat.workers.runner import WorkerRunner
 from pipecat.processors.aggregators.llm_context import LLMContext
 from pipecat.processors.aggregators.llm_response_universal import LLMContextAggregatorPair
 from pipecat.processors.frame_processor import FrameDirection, FrameProcessor
@@ -81,7 +81,7 @@ class PipecatAdapter(AgentAdapter):
         context = LLMContext(messages=list(self.history))
         pair = LLMContextAggregatorPair(context)
         collector = _Collector()
-        task = PipelineTask(
+        task = PipelineWorker(
             Pipeline([pair.user(), llm, collector, pair.assistant()]),
             params=PipelineParams(enable_metrics=True, enable_usage_metrics=True),
         )
@@ -91,7 +91,7 @@ class PipecatAdapter(AgentAdapter):
             await task.queue_frames([EndFrame()])
 
         await task.queue_frames([LLMRunFrame()])
-        runner = PipelineRunner(handle_sigint=False)
+        runner = WorkerRunner(handle_sigint=False)
         await asyncio.gather(runner.run(task), stop_when_done())
         return "".join(collector.text_parts), collector.metrics
 

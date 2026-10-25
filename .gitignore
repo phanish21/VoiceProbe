@@ -4,3 +4,7 @@ __pycache__/
 *.egg-info/
 .venv/
 .env
+voices/
+audio_cache/
+scratch/
+*.wav
