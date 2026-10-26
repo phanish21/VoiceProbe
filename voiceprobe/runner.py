@@ -20,11 +20,14 @@ def _save(result: dict, out_dir: str, name: str) -> None:
 
 
 def run_scenario(scenario: Scenario, agent, out_dir: str | None = "runs") -> dict:
-    turns = [_agent_turn(agent.start())]
-
-    for turn in scenario.turns:
-        turns.append({"role": "caller", "text": turn["say"], "behavior": turn.get("behavior")})
-        turns.append(_agent_turn(agent.respond(turn["say"])))
+    turns = []
+    try:
+        turns.append(_agent_turn(agent.start()))
+        for turn in scenario.turns:
+            turns.append({"role": "caller", "text": turn["say"], "behavior": turn.get("behavior")})
+            turns.append(_agent_turn(agent.respond(turn["say"])))
+    finally:
+        agent.close()
 
     agent_turns = [t for t in turns if t["role"] == "agent"]
     result = {

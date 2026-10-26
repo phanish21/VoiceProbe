@@ -1,7 +1,10 @@
 import math
 
 # Per-turn fields we summarize across runs. Missing ones are skipped.
-TURN_METRICS = ["llm_ms", "llm_ttfb_ms", "llm_ttfat_ms", "stt_ms", "tts_ms"]
+TURN_METRICS = [
+    "e2e_ms", "stt_ms", "llm_ms", "llm_ttfb_ms", "llm_ttfat_ms",
+    "tts_ttfb_ms", "tts_ttfa_ms", "tts_ms", "stt_pipecat_ms",
+]
 
 
 def percentile(values: list[float], p: float) -> float:
@@ -37,6 +40,10 @@ def summarize_run(agent_turns: list[dict]) -> dict:
     if ttfat:
         metrics["ttfat_ms_avg"] = round(sum(ttfat) / len(ttfat), 1)
         metrics["ttfat_ms_max"] = max(ttfat)
+    e2e = [t["e2e_ms"] for t in agent_turns if "e2e_ms" in t]
+    if e2e:
+        metrics["e2e_ms_avg"] = round(sum(e2e) / len(e2e), 1)
+        metrics["e2e_ms_max"] = max(e2e)
     tokens = sum(
         t.get("prompt_tokens", 0) + t.get("completion_tokens", 0) for t in agent_turns
     )

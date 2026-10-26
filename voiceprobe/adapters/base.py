@@ -11,6 +11,10 @@ class AgentReply:
     prompt_tokens: int | None = None
     completion_tokens: int | None = None
     model: str | None = None             # the model that actually ran
+    stt_pipecat_ms: float | None = None   # Pipecat's own STT metric, kept for comparison
+    tts_ttfb_ms: float | None = None
+    tts_ttfa_ms: float | None = None      # first audible sound = TTFB + leading silence
+    e2e_ms: float | None = None           # caller audio ended -> first reply audio
 
 class AgentAdapter:
     """Every agent under test implements these two methods."""
@@ -20,3 +24,6 @@ class AgentAdapter:
 
     def respond(self,caller_text: str) -> AgentReply:
         raise NotImplementedError
+
+    def close(self) -> None:
+        """Release resources (pipelines, threads). Default: nothing to do."""

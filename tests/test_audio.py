@@ -2,8 +2,7 @@ import wave
 
 import pytest
 
-from voiceprobe.audio import CallerVoice, duration_s, read_wav
-
+from voiceprobe.audio import CallerVoice, duration_s, read_wav, chunk_pcm
 
 def make_wav(path, seconds=0.5, rate=16000, width=2):
     with wave.open(str(path), "wb") as f:
@@ -45,3 +44,12 @@ def test_read_wav_rejects_non_16_bit(tmp_path):
     make_wav(path, width=1)
     with pytest.raises(ValueError):
         read_wav(path)
+
+def test_chunk_pcm_pads_and_splits_evenly():
+    pcm = b"\x01\x00" * 1000                       # 1000 samples = 2000 bytes
+    chunks = chunk_pcm(pcm, pad_s=0.1)              # + 1600 samples of silence = 5200 bytes
+    assert len(chunks) == 9                         # padded up to 5760 bytes = 9 chunks of 640
+    assert all(len(c) == 640 for c in chunks)
+    joined = b"".join(chunks)
+    assert joined[:2000] == pcm                     # original audio untouched
+    assert set(joined[2000:]) == {0}                # everything after it is silence

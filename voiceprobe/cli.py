@@ -9,16 +9,19 @@ from .scenario import load_scenario
 
 
 def build_agent(args, prompt: str):
-    if args.agent == "pipecat":
+    if args.agent in ("pipecat", "pipecat-voice"):
         if args.mock:
             raise SystemExit("--mock only works with --agent text")
         try:
-            # imported here, not at the top, so the CLI works without Pipecat installed
-            from .adapters.pipecat_adapter import PipecatAdapter
+            # imported here so the CLI works without Pipecat installed
+            if args.agent == "pipecat-voice":
+                from .adapters.pipecat_voice_adapter import PipecatVoiceAdapter as Adapter
+            else:
+                from .adapters.pipecat_adapter import PipecatAdapter as Adapter
         except ImportError:
             raise SystemExit('Pipecat is not installed. Run: pip install -e ".[pipecat]"')
         kwargs = {"model": args.model} if args.model else {}
-        return PipecatAdapter(prompt, **kwargs)
+        return Adapter(prompt, **kwargs)
     return TextAdapter(get_llm(args.mock, use_cache=not args.no_cache), prompt)
 
 
@@ -55,7 +58,7 @@ def main():
     )
     run.add_argument(
         "--agent",
-        choices=["text", "pipecat"],
+        choices=["text", "pipecat", "pipecat-voice"],
         default="text",
         help="which agent adapter to test (pipecat needs: pip install -e '.[pipecat]')",
     )
