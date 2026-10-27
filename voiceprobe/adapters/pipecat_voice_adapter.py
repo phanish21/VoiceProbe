@@ -38,6 +38,29 @@ from pipecat.workers.runner import WorkerRunner
 from ..audio import CallerVoice, chunk_pcm, to_16k_mono
 from .base import AgentAdapter, AgentReply
 
+from faster_whisper import WhisperModel
+
+_WHISPER_CACHE: dict = {}
+
+
+class _SharedWhisperSTTService(WhisperSTTService):
+    """WhisperSTTService that loads the model once per process.
+
+    The stock service loads a new WhisperModel in every constructor call. Repeated
+    runs then run out of memory (mkl_malloc errors after ~10 loads).
+    """
+
+    def _load(self):
+        key = (self._settings.model, self._device, self._compute_type)
+        if key not in _WHISPER_CACHE:
+            _WHISPER_CACHE[key] = WhisperModel(
+                self._settings.model, device=self._device, compute_type=self._compute_type
+            )
+        self._model = _WHISPER_CACHE[key]
+        unsupported = self._unsupported_language()
+        if unsupported:
+            raise ValueError(unsupported)
+
 RATE = 16000
 GRACE_S = 0.3        # wait after the reply ends for late metrics to arrive
 TURN_TIMEOUT_S = 90  # give up on a turn that never produces speech
@@ -188,7 +211,7 @@ class PipecatVoiceAdapter(AgentAdapter):
     # --- async internals, all running on the background loop ---
 
     async def _open(self):
-        stt = WhisperSTTService(
+        stt = _SharedWhisperSTTService(
             device="cpu", compute_type="int8",
             settings=WhisperSTTService.Settings(model=self.stt_model),
         )
