@@ -51,20 +51,45 @@ def summarize_run(agent_turns: list[dict]) -> dict:
         metrics["total_tokens"] = tokens
     return metrics
 
+def _turns_of_kind(run: dict, kind: str | None) -> list[dict]:
+    """Agent turns of one run. kind: 'greeting' (first turn), 'reply' (the rest), None (all)."""
+    agent = [t for t in run["turns"] if t["role"] == "agent"]
+    if kind == "greeting":
+        return agent[:1]
+    if kind == "reply":
+        return agent[1:]
+    return agent
 
-def aggregate_runs(results: list[dict]) -> dict:
-    """Pool every agent turn from every run, then describe each metric."""
+
+def aggregate_runs(results: list[dict], kind: str | None = None) -> dict:
+    """Pool agent turns from every run, then describe each metric.
+
+    kind=None pools every turn (greeting and reply mixed, as before).
+    kind='greeting' or 'reply' pools only that kind of turn.
+    """
     summary = {}
     for name in TURN_METRICS:
         values = [
             t[name]
             for r in results
-            for t in r["turns"]
-            if t["role"] == "agent" and name in t
+            for t in _turns_of_kind(r, kind)
+            if name in t
         ]
         if values:
             summary[name] = describe(values)
-    tokens = [r["metrics"]["total_tokens"] for r in results if "total_tokens" in r["metrics"]]
-    if tokens:
-        summary["total_tokens_per_run"] = describe(tokens)
+    if kind is None:
+        tokens = [r["metrics"]["total_tokens"] for r in results if "total_tokens" in r["metrics"]]
+        if tokens:
+            summary["total_tokens_per_run"] = describe(tokens)
     return summary
+
+
+def aggregate_by_turn(results: list[dict]) -> dict:
+    """Greeting turns and reply turns summarized separately.
+
+    They measure different things: the greeting has no STT stage.
+    """
+    return {
+        "greeting": aggregate_runs(results, "greeting"),
+        "reply": aggregate_runs(results, "reply"),
+    }

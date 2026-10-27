@@ -1,6 +1,6 @@
 import pytest
 
-from voiceprobe.metrics import aggregate_runs, percentile, summarize_run
+from voiceprobe.metrics import aggregate_runs, percentile, summarize_run, aggregate_by_turn
 
 
 def test_percentile_basics():
@@ -38,3 +38,20 @@ def test_summarize_run_skips_missing_metrics():
         "llm_ms_avg": 200.0,
         "llm_ms_max": 300.0,
     }
+
+def test_aggregate_by_turn_splits_greeting_and_reply():
+    def run(g, r):
+        return {
+            "turns": [
+                {"role": "agent", "e2e_ms": g},
+                {"role": "caller", "text": "x"},
+                {"role": "agent", "e2e_ms": r, "stt_ms": 1000.0},
+            ],
+            "metrics": {},
+        }
+
+    out = aggregate_by_turn([run(100.0, 900.0), run(200.0, 1100.0)])
+    assert out["greeting"]["e2e_ms"]["median"] == 150.0
+    assert out["reply"]["e2e_ms"]["median"] == 1000.0
+    assert "stt_ms" not in out["greeting"]
+    assert out["reply"]["stt_ms"]["n"] == 2

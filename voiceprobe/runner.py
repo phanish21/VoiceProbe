@@ -5,6 +5,7 @@ from pathlib import Path
 
 from .metrics import aggregate_runs, summarize_run
 from .scenario import Scenario
+from .metrics import aggregate_by_turn, aggregate_runs, summarize_run
 
 
 def _agent_turn(reply) -> dict:
@@ -41,17 +42,26 @@ def run_scenario(scenario: Scenario, agent, out_dir: str | None = "runs") -> dic
         _save(result, out_dir, scenario.name)
     return result
 
+def run_repeated(
+    scenario: Scenario, make_agent, n: int, out_dir: str | None = "runs", warmup: int = 0
+) -> dict:
+    """Run the scenario n times, each with a brand-new agent.
 
-def run_repeated(scenario: Scenario, make_agent, n: int, out_dir: str | None = "runs") -> dict:
-    """Run the scenario n times, each with a brand-new agent."""
+    `warmup` extra runs go first and are thrown away: the first run in a process
+    pays one-time model loading, which is not steady-state latency.
+    """
+    for _ in range(warmup):
+        run_scenario(scenario, make_agent(), out_dir=None)
     runs = [run_scenario(scenario, make_agent(), out_dir=None) for _ in range(n)]
     result = {
         "scenario": scenario.name,
         "timestamp": time.time(),
         "model": runs[0]["model"],
         "n_runs": n,
+        "warmup_runs": warmup,
         "runs": runs,
         "summary": aggregate_runs(runs),
+        "summary_by_turn": aggregate_by_turn(runs),
     }
     if out_dir is not None:
         _save(result, out_dir, scenario.name)

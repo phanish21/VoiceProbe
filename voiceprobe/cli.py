@@ -30,12 +30,25 @@ def print_single(result: dict) -> None:
         print(f"[{turn['role']:6}] {turn['text']}")
     print(f"\nmetrics: {result['metrics']}  ->  runs/{result['scenario']}.json")
 
+def _print_table(title: str, summary: dict) -> None:
+    print(title)
+    print(f"{'metric':<22}{'n':>4}{'median':>10}{'p95':>10}{'min':>10}{'max':>10}")
+    for name, s in summary.items():
+        if name == "total_tokens_per_run":
+            continue
+        print(f"{name:<22}{s['n']:>4}{s['median']:>10}{s['p95']:>10}{s['min']:>10}{s['max']:>10}")
+    print()
 
 def print_summary(result: dict) -> None:
-    print(f"{result['scenario']}: {result['n_runs']} runs, model={result['model']}\n")
-    print(f"{'metric':<22}{'n':>4}{'median':>10}{'p95':>10}{'min':>10}{'max':>10}")
-    for name, s in result["summary"].items():
-        print(f"{name:<22}{s['n']:>4}{s['median']:>10}{s['p95']:>10}{s['min']:>10}{s['max']:>10}")
+    print(
+        f"{result['scenario']}: {result['n_runs']} runs "
+        f"(+{result['warmup_runs']} warm-up, discarded), model={result['model']}\n"
+    )
+    _print_table("GREETING turns (no STT stage)", result["summary_by_turn"]["greeting"])
+    _print_table("REPLY turns (caller audio in, reply audio out)", result["summary_by_turn"]["reply"])
+    tokens = result["summary"].get("total_tokens_per_run")
+    if tokens:
+        print(f"tokens per run: median {tokens['median']}, p95 {tokens['p95']}")
     print(f"\n->  runs/{result['scenario']}.json")
 
 
@@ -64,6 +77,12 @@ def main():
     )
     run.add_argument("--model", default=None, help="model for the pipecat agent")
     run.add_argument("--runs", type=int, default=1, help="repeat N times, report median and p95")
+    run.add_argument(
+        "--warmup",
+        type=int,
+        default=None,
+        help="extra runs to discard first (default: 1 for pipecat-voice, else 0)",
+    )
 
     args = parser.parse_args()
 
@@ -71,7 +90,9 @@ def main():
         raise SystemExit("--runs must be at least 1")
     if args.runs > 1 and args.agent == "text" and not args.mock and not args.no_cache:
         raise SystemExit("--runs > 1 needs --no-cache: cached answers repeat the same latency")
-
+    if args.warmup is not None and args.warmup < 0:
+        raise SystemExit("--warmup cannot be negative")
+    
     scenario = load_scenario(args.scenario)
     prompt = Path(args.prompt).read_text(encoding="utf-8")
 
@@ -79,14 +100,19 @@ def main():
         print_single(run_scenario(scenario, build_agent(args, prompt)))
         return
 
+    warmup = args.warmup if args.warmup is not None else (1 if args.agent == "pipecat-voice" else 0)
     done = {"count": 0}
 
     def make_agent():
         done["count"] += 1
-        print(f"run {done['count']}/{args.runs} ...", file=sys.stderr)
+        if done["count"] <= warmup:
+            label = "warm-up"
+        else:
+            label = f"run {done['count'] - warmup}/{args.runs}"
+        print(f"{label} ...", file=sys.stderr)
         return build_agent(args, prompt)
 
-    print_summary(run_repeated(scenario, make_agent, args.runs))
+    print_summary(run_repeated(scenario, make_agent, args.runs, warmup=warmup))
 
 
 if __name__ == "__main__":

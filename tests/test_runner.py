@@ -7,6 +7,7 @@ from voiceprobe.scenario import load_scenario
 
 from voiceprobe.adapters.base import AgentAdapter, AgentReply
 from voiceprobe.runner import run_repeated, run_scenario
+from voiceprobe.scenario import Scenario
 
 ROOT = Path(__file__).parent.parent
 
@@ -70,3 +71,31 @@ def test_run_repeated_summarizes_across_runs(tmp_path):
     assert result["summary"]["llm_ms"]["n"] == 6
     assert result["summary"]["llm_ms"]["median"] == 150.0
     assert (tmp_path / "wrong_answer.json").exists()
+
+from voiceprobe.adapters.base import AgentAdapter, AgentReply
+from voiceprobe.runner import run_repeated
+from voiceprobe.scenario import Scenario
+
+
+class _TimedFake(AgentAdapter):
+    def start(self):
+        return AgentReply(text="hi", llm_ms=1.0, e2e_ms=100.0)
+
+    def respond(self, caller_text):
+        return AgentReply(text="ok", llm_ms=1.0, e2e_ms=900.0)
+
+
+def test_warmup_runs_are_discarded(tmp_path):
+    scenario = Scenario(name="t", description="", turns=[{"say": "hello"}])
+    made = []
+
+    def make_agent():
+        made.append(1)
+        return _TimedFake()
+
+    result = run_repeated(scenario, make_agent, n=3, out_dir=str(tmp_path), warmup=2)
+    assert len(made) == 5
+    assert result["n_runs"] == 3 and len(result["runs"]) == 3
+    assert result["warmup_runs"] == 2
+    assert result["summary_by_turn"]["greeting"]["e2e_ms"]["median"] == 100.0
+    assert result["summary_by_turn"]["reply"]["e2e_ms"]["median"] == 900.0
