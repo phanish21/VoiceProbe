@@ -11,7 +11,7 @@ from pipecat.metrics.metrics import (
     TTFBMetricsData,
 )
 
-from voiceprobe.adapters.pipecat_voice_adapter import build_reply, route_metrics
+from voiceprobe.adapters.pipecat_voice_adapter import build_reply, route_metrics, _TurnState
 
 
 def make_metrics(llm_model="m"):
@@ -61,3 +61,35 @@ def test_stopwatch_fields_and_missing_audio():
 def test_model_mismatch_prints_a_warning(capsys):
     build_reply("hi", make_metrics(llm_model="other"), 0.0, None, 1.0, "wanted")
     assert "WARNING" in capsys.readouterr().err
+
+
+def test_renamed_stt_subclass_is_still_routed_to_stt():
+    # Regression: a subclass name must not leak STT metrics into the LLM fields.
+    metrics = [
+        ProcessingMetricsData(processor="_SharedWhisperSTTService#3", model="base", value=0.01),
+        ProcessingMetricsData(processor="GroqLLMService#3", model="m", value=0.6),
+    ]
+    fields = route_metrics(metrics)
+    assert fields["stt_pipecat_ms"] == pytest.approx(10.0)
+    assert fields["llm_ms"] == pytest.approx(600.0)
+
+
+def test_unrecognized_processor_is_skipped_with_a_warning(capsys):
+    metrics = [
+        ProcessingMetricsData(processor="MysteryThing#0", model="x", value=9.0),
+        ProcessingMetricsData(processor="GroqLLMService#0", model="m", value=0.6),
+    ]
+    fields = route_metrics(metrics)
+    assert fields["llm_ms"] == pytest.approx(600.0)  # not overwritten by the unknown one
+    assert "MysteryThing" in capsys.readouterr().err
+
+
+def test_turn_error_wakes_the_waiter_and_raises():
+    state = _TurnState()
+    assert not state.done.is_set()
+    state.fail("transcription failed")
+    assert state.done.is_set()
+    with pytest.raises(RuntimeError, match="transcription failed"):
+        state.raise_if_failed()
+    state.reset()
+    state.raise_if_failed()  # a new turn starts clean

@@ -8,6 +8,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 from loguru import logger
 from pipecat.frames.frames import (
+    ErrorFrame,
     InputAudioRawFrame,
     LLMRunFrame,
     LLMTextFrame,
@@ -70,14 +71,22 @@ def _ms(seconds: float) -> float:
     return round(seconds * 1000, 1)
 
 
-def _stage(processor: str) -> str:
-    """'WhisperSTTService#0' -> 'stt', 'PiperTTSService#0' -> 'tts', anything else -> 'llm'."""
-    name = processor.split("#")[0]
-    if name.endswith("STTService"):
+_WARNED_PROCESSORS: set = set()
+
+
+def _stage(processor: str):
+    """Which stage a processor belongs to: 'stt', 'tts', 'llm', or None if unrecognized.
+
+    STT is checked before TTS because 'STTService' contains the letters 'TTS'.
+    """
+    name = processor.split("#")[0].upper()
+    if "STT" in name:
         return "stt"
-    if name.endswith("TTSService"):
+    if "TTS" in name:
         return "tts"
-    return "llm"
+    if "LLM" in name:
+        return "llm"
+    return None
 
 
 def route_metrics(metrics) -> dict:
@@ -87,6 +96,12 @@ def route_metrics(metrics) -> dict:
         if m.model is None:  # placeholder entries emitted before a request starts
             continue
         stage = _stage(m.processor)
+        if stage is None:
+            base = m.processor.split("#")[0]
+            if base not in _WARNED_PROCESSORS:
+                _WARNED_PROCESSORS.add(base)
+                print(f"WARNING: ignoring metrics from unrecognized processor {base}", file=sys.stderr)
+            continue
         if isinstance(m, TTFBMetricsData):
             if stage == "llm":
                 out.setdefault("llm_ttfb_ms", _ms(m.value))
@@ -131,7 +146,17 @@ class _TurnState:
         self.transcript = None
         self.t_transcript = None
         self.t_first_audio = None
+        self.error = None
         self.done = asyncio.Event()
+
+    def fail(self, message: str):
+        """Record a pipeline error and wake up anyone waiting for the turn to finish."""
+        self.error = message
+        self.done.set()
+
+    def raise_if_failed(self):
+        if self.error:
+            raise RuntimeError(f"Pipecat reported an error during the turn: {self.error}")
 
 
 class _Tap(FrameProcessor):
@@ -159,6 +184,19 @@ class _Tap(FrameProcessor):
                 s.metrics.extend(frame.data)  # only here: metrics pass every tap, count them once
             elif isinstance(frame, TTSStoppedFrame):
                 s.done.set()
+        await self.push_frame(frame, direction)
+
+class _ErrorTap(FrameProcessor):
+    """First processor in the pipeline: sees error frames coming up from every stage."""
+
+    def __init__(self, state: _TurnState):
+        super().__init__()
+        self.state = state
+
+    async def process_frame(self, frame, direction):
+        await super().process_frame(frame, direction)
+        if isinstance(frame, ErrorFrame):
+            self.state.fail(str(frame.error))
         await self.push_frame(frame, direction)
 
 
@@ -228,7 +266,8 @@ class PipecatVoiceAdapter(AgentAdapter):
         pair = LLMContextAggregatorPair(context)
         taps = {k: _Tap(self._state, k) for k in ("stt", "llm", "tts")}
         pipeline = Pipeline(
-            [stt, taps["stt"], pair.user(), llm, taps["llm"], tts, taps["tts"], pair.assistant()]
+            [_ErrorTap(self._state), stt, taps["stt"], pair.user(), llm, taps["llm"], tts,
+             taps["tts"], pair.assistant()]
         )
         self._worker = PipelineWorker(
             pipeline,
@@ -265,7 +304,9 @@ class PipecatVoiceAdapter(AgentAdapter):
             raise RuntimeError(
                 f"No spoken reply within {TURN_TIMEOUT_S}s (transcript so far: {s.transcript!r})"
             ) from None
+        s.raise_if_failed()
         await asyncio.sleep(GRACE_S)
+        s.raise_if_failed()
         return build_reply(
             "".join(s.text_parts), s.metrics, t_ref, s.t_transcript, s.t_first_audio, self.model
         )

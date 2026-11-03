@@ -53,66 +53,70 @@ def print_summary(result: dict) -> None:
 
 
 def main():
-    parser = argparse.ArgumentParser(prog="voiceprobe")
-    sub = parser.add_subparsers(dest="command", required=True)
+    try:
+        parser = argparse.ArgumentParser(prog="voiceprobe")
+        sub = parser.add_subparsers(dest="command", required=True)
 
-    run = sub.add_parser("run", help="run one scenario against the sample agent")
-    run.add_argument("scenario", help="path to a scenario YAML file")
-    run.add_argument("--mock", action="store_true", help="use the offline mock LLM")
-    run.add_argument(
-        "--no-cache",
-        action="store_true",
-        help="skip the response cache so latency numbers are real",
-    )
-    run.add_argument(
-        "--prompt",
-        default="examples/sample_agent/prompt.txt",
-        help="path to the agent's system prompt",
-    )
-    run.add_argument(
-        "--agent",
-        choices=["text", "pipecat", "pipecat-voice"],
-        default="text",
-        help="which agent adapter to test (pipecat needs: pip install -e '.[pipecat]')",
-    )
-    run.add_argument("--model", default=None, help="model for the pipecat agent")
-    run.add_argument("--runs", type=int, default=1, help="repeat N times, report median and p95")
-    run.add_argument(
-        "--warmup",
-        type=int,
-        default=None,
-        help="extra runs to discard first (default: 1 for pipecat-voice, else 0)",
-    )
+        run = sub.add_parser("run", help="run one scenario against the sample agent")
+        run.add_argument("scenario", help="path to a scenario YAML file")
+        run.add_argument("--mock", action="store_true", help="use the offline mock LLM")
+        run.add_argument(
+            "--no-cache",
+            action="store_true",
+            help="skip the response cache so latency numbers are real",
+        )
+        run.add_argument(
+            "--prompt",
+            default="examples/sample_agent/prompt.txt",
+            help="path to the agent's system prompt",
+        )
+        run.add_argument(
+            "--agent",
+            choices=["text", "pipecat", "pipecat-voice"],
+            default="text",
+            help="which agent adapter to test (pipecat needs: pip install -e '.[pipecat]')",
+        )
+        run.add_argument("--model", default=None, help="model for the pipecat agent")
+        run.add_argument("--runs", type=int, default=1, help="repeat N times, report median and p95")
+        run.add_argument(
+            "--warmup",
+            type=int,
+            default=None,
+            help="extra runs to discard first (default: 1 for pipecat-voice, else 0)",
+        )
 
-    args = parser.parse_args()
+        args = parser.parse_args()
 
-    if args.runs < 1:
-        raise SystemExit("--runs must be at least 1")
-    if args.runs > 1 and args.agent == "text" and not args.mock and not args.no_cache:
-        raise SystemExit("--runs > 1 needs --no-cache: cached answers repeat the same latency")
-    if args.warmup is not None and args.warmup < 0:
-        raise SystemExit("--warmup cannot be negative")
-    
-    scenario = load_scenario(args.scenario)
-    prompt = Path(args.prompt).read_text(encoding="utf-8")
+        if args.runs < 1:
+            raise SystemExit("--runs must be at least 1")
+        if args.runs > 1 and args.agent == "text" and not args.mock and not args.no_cache:
+            raise SystemExit("--runs > 1 needs --no-cache: cached answers repeat the same latency")
+        if args.warmup is not None and args.warmup < 0:
+            raise SystemExit("--warmup cannot be negative")
+        
+        scenario = load_scenario(args.scenario)
+        prompt = Path(args.prompt).read_text(encoding="utf-8")
 
-    if args.runs == 1:
-        print_single(run_scenario(scenario, build_agent(args, prompt)))
-        return
+        if args.runs == 1:
+            print_single(run_scenario(scenario, build_agent(args, prompt)))
+            return
 
-    warmup = args.warmup if args.warmup is not None else (1 if args.agent == "pipecat-voice" else 0)
-    done = {"count": 0}
+        warmup = args.warmup if args.warmup is not None else (1 if args.agent == "pipecat-voice" else 0)
+        done = {"count": 0}
 
-    def make_agent():
-        done["count"] += 1
-        if done["count"] <= warmup:
-            label = "warm-up"
-        else:
-            label = f"run {done['count'] - warmup}/{args.runs}"
-        print(f"{label} ...", file=sys.stderr)
-        return build_agent(args, prompt)
+        def make_agent():
+            done["count"] += 1
+            if done["count"] <= warmup:
+                label = "warm-up"
+            else:
+                label = f"run {done['count'] - warmup}/{args.runs}"
+            print(f"{label} ...", file=sys.stderr)
+            return build_agent(args, prompt)
 
-    print_summary(run_repeated(scenario, make_agent, args.runs, warmup=warmup))
+        print_summary(run_repeated(scenario, make_agent, args.runs, warmup=warmup))
+
+    except RuntimeError as e:
+        raise SystemExit(str(e))
 
 
 if __name__ == "__main__":

@@ -1,5 +1,8 @@
 from pathlib import Path
 
+import json
+import pytest
+
 from voiceprobe.adapters.text_adapter import TextAdapter
 from voiceprobe.llm import MockLLM
 from voiceprobe.runner import run_scenario
@@ -99,3 +102,25 @@ def test_warmup_runs_are_discarded(tmp_path):
     assert result["warmup_runs"] == 2
     assert result["summary_by_turn"]["greeting"]["e2e_ms"]["median"] == 100.0
     assert result["summary_by_turn"]["reply"]["e2e_ms"]["median"] == 900.0
+
+
+def test_partial_results_survive_a_failed_run(tmp_path):
+    scenario = Scenario(name="t", description="", turns=[{"say": "hello"}])
+
+    class Boom(_TimedFake):
+        def respond(self, caller_text):
+            raise RuntimeError("boom")
+
+    agents = iter([_TimedFake(), _TimedFake(), Boom()])
+    with pytest.raises(RuntimeError):
+        run_repeated(scenario, lambda: next(agents), n=3, out_dir=str(tmp_path))
+
+    partial = json.loads((tmp_path / "t.partial.json").read_text())
+    assert partial["n_done"] == 2 and partial["complete"] is False
+
+
+def test_partial_file_is_removed_after_a_complete_run(tmp_path):
+    scenario = Scenario(name="t", description="", turns=[{"say": "hello"}])
+    run_repeated(scenario, _TimedFake, n=2, out_dir=str(tmp_path))
+    assert (tmp_path / "t.json").exists()
+    assert not (tmp_path / "t.partial.json").exists()

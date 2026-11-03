@@ -47,12 +47,20 @@ def run_repeated(
 ) -> dict:
     """Run the scenario n times, each with a brand-new agent.
 
-    `warmup` extra runs go first and are thrown away: the first run in a process
-    pays one-time model loading, which is not steady-state latency.
+    After every finished run a partial file is written, so a crash does not lose the
+    runs that already completed. The partial file is removed when all runs finish.
     """
     for _ in range(warmup):
         run_scenario(scenario, make_agent(), out_dir=None)
-    runs = [run_scenario(scenario, make_agent(), out_dir=None) for _ in range(n)]
+    runs = []
+    for _ in range(n):
+        runs.append(run_scenario(scenario, make_agent(), out_dir=None))
+        if out_dir is not None:
+            _save(
+                {"scenario": scenario.name, "complete": False,
+                 "n_done": len(runs), "n_requested": n, "runs": runs},
+                out_dir, f"{scenario.name}.partial",
+            )
     result = {
         "scenario": scenario.name,
         "timestamp": time.time(),
@@ -65,4 +73,5 @@ def run_repeated(
     }
     if out_dir is not None:
         _save(result, out_dir, scenario.name)
+        Path(out_dir, f"{scenario.name}.partial.json").unlink(missing_ok=True)
     return result
