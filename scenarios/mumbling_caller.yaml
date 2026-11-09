@@ -1,0 +1,15 @@
+name: mumbling_caller
+description: Caller only mumbles and never gives an answer.
+turns:
+  - say: "Hmm."
+    behavior: mumble
+  - say: "Hmm, hmm."
+    behavior: mumble
+  - say: "Uhh."
+    behavior: mumble
+expect:
+  agent_should:
+    - notice that no answer was given
+    - encourage or rephrase instead of treating the mumble as an answer
+    - not move on as if the question was answered
+  min_judge_score: 6

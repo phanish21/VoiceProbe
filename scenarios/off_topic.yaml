@@ -1,0 +1,12 @@
+name: off_topic
+description: Caller drifts off topic, then returns to the question.
+turns:
+  - say: "Actually, before that, what's the weather like where you are?"
+    behavior: off_topic
+  - say: "Sorry about that. A stack is last in first out."
+    behavior: correct_answer
+expect:
+  agent_should:
+    - steer back to the interview question politely
+    - accept the correct answer once given
+  min_judge_score: 7

@@ -5,12 +5,11 @@ import pytest
 
 from voiceprobe.adapters.text_adapter import TextAdapter
 from voiceprobe.llm import MockLLM
-from voiceprobe.runner import run_scenario
-from voiceprobe.scenario import load_scenario
+from voiceprobe.runner import run_scenario, run_repeated
+from voiceprobe.scenario import load_scenario, Scenario
 
 from voiceprobe.adapters.base import AgentAdapter, AgentReply
-from voiceprobe.runner import run_repeated, run_scenario
-from voiceprobe.scenario import Scenario
+from voiceprobe.caller import CallerSimulator
 
 ROOT = Path(__file__).parent.parent
 
@@ -124,3 +123,33 @@ def test_partial_file_is_removed_after_a_complete_run(tmp_path):
     run_repeated(scenario, _TimedFake, n=2, out_dir=str(tmp_path))
     assert (tmp_path / "t.json").exists()
     assert not (tmp_path / "t.partial.json").exists()
+
+class _ScriptedLLM:
+    """Stands in for the caller's LLM and records what it was asked."""
+    def __init__(self):
+        self.calls = []
+
+    def chat(self, system, messages):
+        self.calls.append(messages)
+        return '  "A stack is last in first out."  '
+
+
+def test_caller_simulator_maps_roles_and_cleans_the_line():
+    llm = _ScriptedLLM()
+    caller = CallerSimulator(llm, persona="p", goal="g")
+    line = caller.next_line([
+        {"role": "agent", "text": "What is a stack?"},
+        {"role": "caller", "text": "Um, a pile?"},
+        {"role": "agent", "text": "Can you say more?"},
+    ])
+    assert line == "A stack is last in first out."
+    assert [m["role"] for m in llm.calls[0]] == ["user", "assistant", "user"]
+
+
+def test_runner_uses_the_simulated_caller(tmp_path):
+    scenario = Scenario(name="sim", description="", caller={"persona": "p", "goal": "g"})
+    caller = CallerSimulator(_ScriptedLLM(), persona="p", goal="g", max_turns=2)
+    result = run_scenario(scenario, _TimedFake(), out_dir=str(tmp_path), caller=caller)
+    roles = [t["role"] for t in result["turns"]]
+    assert roles == ["agent", "caller", "agent", "caller", "agent"]
+    assert result["turns"][1]["behavior"] == "simulated"

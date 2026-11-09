@@ -19,14 +19,27 @@ def _save(result: dict, out_dir: str, name: str) -> None:
     Path(out_dir).mkdir(exist_ok=True)
     Path(out_dir, f"{name}.json").write_text(json.dumps(result, indent=2), encoding="utf-8")
 
+def _caller_lines(scenario: Scenario, caller, turns: list):
+    """Yield (text, behavior) for each caller line.
 
-def run_scenario(scenario: Scenario, agent, out_dir: str | None = "runs") -> dict:
+    With a simulator the next line is generated lazily from `turns`, which the runner
+    keeps appending to, so each line reacts to the agent's latest reply.
+    """
+    if caller is None:
+        for t in scenario.turns:
+            yield t["say"], t.get("behavior")
+    else:
+        for _ in range(caller.max_turns):
+            yield caller.next_line(turns), "simulated"
+
+
+def run_scenario(scenario: Scenario, agent, out_dir: str | None = "runs", caller=None) -> dict:
     turns = []
     try:
         turns.append(_agent_turn(agent.start()))
-        for turn in scenario.turns:
-            turns.append({"role": "caller", "text": turn["say"], "behavior": turn.get("behavior")})
-            turns.append(_agent_turn(agent.respond(turn["say"])))
+        for say, behavior in _caller_lines(scenario, caller, turns):
+            turns.append({"role": "caller", "text": say, "behavior": behavior})
+            turns.append(_agent_turn(agent.respond(say)))
     finally:
         agent.close()
 
@@ -43,7 +56,7 @@ def run_scenario(scenario: Scenario, agent, out_dir: str | None = "runs") -> dic
     return result
 
 def run_repeated(
-    scenario: Scenario, make_agent, n: int, out_dir: str | None = "runs", warmup: int = 0
+    scenario: Scenario, make_agent, n: int, out_dir: str | None = "runs", warmup: int = 0, caller=None
 ) -> dict:
     """Run the scenario n times, each with a brand-new agent.
 
@@ -51,7 +64,7 @@ def run_repeated(
     runs that already completed. The partial file is removed when all runs finish.
     """
     for _ in range(warmup):
-        run_scenario(scenario, make_agent(), out_dir=None)
+        run_scenario(scenario, make_agent(), out_dir=None, caller=caller)
     runs = []
     for _ in range(n):
         runs.append(run_scenario(scenario, make_agent(), out_dir=None))

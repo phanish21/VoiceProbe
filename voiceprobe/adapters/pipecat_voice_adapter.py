@@ -122,9 +122,10 @@ def route_metrics(metrics) -> dict:
     return out
 
 
-def build_reply(text, metrics, t_ref, t_transcript, t_first_audio, requested_model) -> AgentReply:
+def build_reply(text, metrics, t_ref, t_transcript, t_first_audio, requested_model, heard=None) -> AgentReply:
     fields = route_metrics(metrics)
     reply = AgentReply(text=text, llm_ms=fields.pop("llm_ms", 0.0), **fields)
+    reply.heard = heard
     if t_transcript is not None:
         reply.stt_ms = _ms(t_transcript - t_ref)
     if t_first_audio is not None:
@@ -307,9 +308,7 @@ class PipecatVoiceAdapter(AgentAdapter):
         s.raise_if_failed()
         await asyncio.sleep(GRACE_S)
         s.raise_if_failed()
-        return build_reply(
-            "".join(s.text_parts), s.metrics, t_ref, s.t_transcript, s.t_first_audio, self.model
-        )
+        return build_reply("".join(s.text_parts), s.metrics, t_ref, s.t_transcript, s.t_first_audio, self.model, heard=s.transcript)
 
     async def _shutdown(self):
         if self._worker is None:

@@ -15,6 +15,7 @@ class AgentReply:
     tts_ttfb_ms: float | None = None
     tts_ttfa_ms: float | None = None      # first audible sound = TTFB + leading silence
     e2e_ms: float | None = None           # caller audio ended -> first reply audio
+    heard: str | None = None   # what the STT stage transcribed (None for the greeting)
 
 class AgentAdapter:
     """Every agent under test implements these two methods."""

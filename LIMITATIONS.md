@@ -16,3 +16,11 @@
   (up to about 180 ms observed). The agent's wording differs between runs.
 - **LLM latency includes network jitter.** One greeting out of 30 waited about 15 s for
   the first byte from Groq. Medians are robust to this; means are not. Report medians and p95.
+- **Scenarios not yet supported:** a silent caller (no speech at all) and interruptions
+  (caller speaks while the agent is talking) need audio-timing features that VoiceProbe
+  does not have yet. The scenario set covers correct answers, wrong answers, filler
+  sounds, off-topic drift and an LLM-played caller.
+- **Mumbles and hums are synthesized.** Non-speech sounds are produced by a
+  text-to-speech voice, so they only approximate real mumbling. Results for the
+  mumbling scenario show how the pipeline handles unclear input, not how it handles
+  real audio.

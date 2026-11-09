@@ -6,6 +6,19 @@ from .adapters.text_adapter import TextAdapter
 from .llm import get_llm
 from .runner import run_repeated, run_scenario
 from .scenario import load_scenario
+from .caller import CallerSimulator
+
+
+def build_caller(scenario, args):
+    cfg = scenario.caller
+    if not cfg:
+        return None
+    return CallerSimulator(
+        get_llm(args.mock, use_cache=not args.no_cache),
+        persona=cfg["persona"],
+        goal=cfg["goal"],
+        max_turns=cfg.get("max_turns", 3),
+    )
 
 
 def build_agent(args, prompt: str):
@@ -26,8 +39,13 @@ def build_agent(args, prompt: str):
 
 
 def print_single(result: dict) -> None:
-    for turn in result["turns"]:
+    turns = result["turns"]
+    for i, turn in enumerate(turns):
         print(f"[{turn['role']:6}] {turn['text']}")
+        if turn["role"] == "caller" and i + 1 < len(turns):
+            heard = turns[i + 1].get("heard")
+            if heard is not None:
+                print(f"         (heard: {heard.strip()})")
     print(f"\nmetrics: {result['metrics']}  ->  runs/{result['scenario']}.json")
 
 def _print_table(title: str, summary: dict) -> None:
@@ -95,10 +113,11 @@ def main():
             raise SystemExit("--warmup cannot be negative")
         
         scenario = load_scenario(args.scenario)
+        caller = build_caller(scenario, args)
         prompt = Path(args.prompt).read_text(encoding="utf-8")
 
         if args.runs == 1:
-            print_single(run_scenario(scenario, build_agent(args, prompt)))
+            print_single(run_scenario(scenario, build_agent(args, prompt), caller=caller))
             return
 
         warmup = args.warmup if args.warmup is not None else (1 if args.agent == "pipecat-voice" else 0)
@@ -113,7 +132,7 @@ def main():
             print(f"{label} ...", file=sys.stderr)
             return build_agent(args, prompt)
 
-        print_summary(run_repeated(scenario, make_agent, args.runs, warmup=warmup))
+        print_summary(run_repeated(scenario, make_agent, args.runs, warmup=warmup, caller=caller))
 
     except RuntimeError as e:
         raise SystemExit(str(e))

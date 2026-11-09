@@ -1,0 +1,10 @@
+name: nervous_candidate
+description: LLM-played caller who is unsure, gives a half-right answer, then corrects themselves.
+caller:
+  persona: "You are nervous and only half-remember computer science. You mix up stacks and queues."
+  goal: "In your first answer, say a stack is first in first out, like a line of people. Only if the interviewer pushes back, correct yourself to last in first out. Answer in one short sentence."
+  max_turns: 3
+expect:
+  agent_should:
+    - probe gently when the answer is incomplete
+  min_judge_score: 6

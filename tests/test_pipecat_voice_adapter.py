@@ -93,3 +93,8 @@ def test_turn_error_wakes_the_waiter_and_raises():
         state.raise_if_failed()
     state.reset()
     state.raise_if_failed()  # a new turn starts clean
+
+def test_heard_text_is_kept_on_the_reply():
+    reply = build_reply("hi", make_metrics(), 10.0, 11.0, 12.0, "m", heard="the stack is last in")
+    assert reply.heard == "the stack is last in"
+    assert build_reply("hi", make_metrics(), 10.0, None, 11.0, "m").heard is None

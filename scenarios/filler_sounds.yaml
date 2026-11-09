@@ -1,0 +1,10 @@
+name: filler_sounds
+description: Caller hesitates with um/uh but gives the right answer.
+turns:
+  - say: "Um, so, uh, a stack is, like, last in first out, I think?"
+    behavior: filler_sounds
+expect:
+  agent_should:
+    - treat the hesitant answer as correct
+    - not ask the caller to repeat or restart
+  min_judge_score: 7
