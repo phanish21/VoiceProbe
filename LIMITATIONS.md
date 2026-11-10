@@ -24,3 +24,6 @@
   text-to-speech voice, so they only approximate real mumbling. Results for the
   mumbling scenario show how the pipeline handles unclear input, not how it handles
   real audio.
+- **Non-sentence input adds a fixed delay.** For hums and mumbles, replies took about
+  7 s because the pipeline waits about 5.0 s (a constant timer, not processing time)
+  before handing the turn to the LLM. Do not mix these turns into latency numbers.
